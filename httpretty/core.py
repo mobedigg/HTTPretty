@@ -741,7 +741,8 @@ class URIInfo(BaseClass):
                  query='',
                  fragment='',
                  scheme='',
-                 last_request=None):
+                 last_request=None,
+                 match_querystring=False):
 
         self.username = username or ''
         self.password = password or ''
@@ -764,6 +765,7 @@ class URIInfo(BaseClass):
             self.scheme = 'http'
         self.fragment = fragment or ''
         self.last_request = last_request
+        self.match_querystring = match_querystring
 
     def __str__(self):
         attrs = (
@@ -772,6 +774,7 @@ class URIInfo(BaseClass):
             'hostname',
             'port',
             'path',
+            'query',
         )
         fmt = ", ".join(['%s="%s"' % (k, getattr(self, k, '')) for k in attrs])
         return r'<httpretty.URIInfo(%s)>' % fmt
@@ -790,6 +793,10 @@ class URIInfo(BaseClass):
             decode_utf8(other.hostname.lower()),
             url_fix(decode_utf8(other.path)),
         )
+        if self.match_querystring:
+            self_tuple += (decode_utf8(self.query),)
+            other_tuple += (decode_utf8(other.query),)
+
         return self_tuple == other_tuple
 
     def full_url(self, use_querystring=True):
@@ -820,21 +827,26 @@ class URIInfo(BaseClass):
         return hostname
 
     @classmethod
-    def from_uri(cls, uri, entry):
+    def from_uri(cls, uri, entry, match_querystring=False):
         result = urlsplit(uri)
         if result.scheme == 'https':
             POTENTIAL_HTTPS_PORTS.add(int(result.port or 443))
         else:
             POTENTIAL_HTTP_PORTS.add(int(result.port or 80))
-        return cls(result.username,
-                   result.password,
-                   result.hostname,
-                   result.port,
-                   result.path,
-                   result.query,
-                   result.fragment,
-                   result.scheme,
-                   entry)
+        kwargs = {'username': result.username,
+                  'password': result.password,
+                  'hostname': result.hostname,
+                  'port': result.port,
+                  'path': result.path,
+                  'query': result.query,
+                  'fragment': result.fragment,
+                  'scheme': result.scheme,
+                  'last_request': entry,
+                  'match_querystring': match_querystring,
+                  }
+        if not match_querystring:
+            kwargs['query'] = ''
+        return cls(**kwargs)
 
 
 class URIMatcher(object):
@@ -854,7 +866,7 @@ class URIMatcher(object):
             else:
                 POTENTIAL_HTTP_PORTS.add(int(result.port or 80))
         else:
-            self.info = URIInfo.from_uri(uri, entries)
+            self.info = URIInfo.from_uri(uri, entries, match_querystring)
 
         self.entries = entries
         self.priority = priority
